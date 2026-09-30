@@ -247,12 +247,20 @@ if [ $SKIP_COMPILE = FALSE ]; then
     # Avoid a silent failure in recovering include files that ends up picking up
     # files with the same name in other folders
     echo -e "\nset_global_assignment -name SEARCH_PATH \"$PRJPATH/hdl\"" >> $corename.qsf
+    if [ -e "$PRJPATH/syn/$TARGET.qsf" ]; then
+        cat "$PRJPATH/syn/$TARGET.qsf" >> $corename.qsf
+    fi
     append_signaltap_qsf
     if [ $SIM = FALSE ]; then
         # Create the QIP file
         if [ -e $CORES/$PRJ/cfg/mem.yaml ]; then jtframe mem $PRJ --target=$TARGET $LOCAL_GEN $NODBG || exit $?; fi
         jtframe mmr $PRJ
         jtframe files syn $PRJ --target=$TARGET $LOCAL_GEN || exit $?
+        # Full source tree of the project, for framework-independent use
+        jtframe files plain $PRJ --target=$TARGET $LOCAL_GEN && \
+            $JTFRAME/devops/export_tree.sh files $corename.qsf \
+            $JTROOT/log/$TARGET/${corename}_sources.tar.gz || \
+            echo "WARNING: source tree export failed"
         # Compilation
         quartus_sh -v
         quartus_sh --flow compile $corename > "$LOG"
@@ -276,10 +284,11 @@ if [ $SKIP_COMPILE = FALSE ]; then
         if grep "inferring latch" $RPTPATH/jt$PRJ.map.rpt; then
             echo "Warning: latch inferred"
         fi
-        # Report FPGA usage
+        # Report FPGA usage and keep the summary with the log artifacts
         if [ $(find $RPTPATH -name "*.fit.summary"|wc -l) -gt 0 ]; then
             grep "Total logic\|Logic utilization" $RPTPATH/*.fit.summary
             grep "Total memory\|Total RAM" $RPTPATH/*.fit.summary
+            cp $RPTPATH/*.fit.summary $JTROOT/log/$TARGET/ 2> /dev/null || true
         fi
         # Report connectivity problems
         AUX=`mktemp`
